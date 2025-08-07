@@ -9,13 +9,34 @@ logger = logging.getLogger(__name__)
 class DenseModel(EncoderModel):
 
     def encode_query(self, qry):
-        query_hidden_states = self.encoder(**qry, return_dict=True)
-        query_hidden_states = query_hidden_states.last_hidden_state
-        return self._pooling(query_hidden_states, qry['attention_mask'])
+        query_outputs = self.encoder(**qry, return_dict=True)
+        
+        # 1. DPR models: use pre-pooled output directly
+        if hasattr(query_outputs, "pooler_output") and query_outputs.pooler_output is not None:
+            return query_outputs.pooler_output
+        
+        # 2. Standard transformers: apply custom pooling to last_hidden_state
+        if hasattr(query_outputs, "last_hidden_state"):
+            return self._pooling(query_outputs.last_hidden_state, qry['attention_mask'])
+        
+        # 3. Unsupported output structure
+        raise ValueError(f"Unsupported encoder output type: {type(query_outputs)}. "
+                        f"Expected 'pooler_output' (DPR) or 'last_hidden_state' (standard transformers).")
     
     def encode_passage(self, psg):
-        # encode passage is the same as encode query
-        return self.encode_query(psg)
+        passage_outputs = self.encoder(**psg, return_dict=True)
+        
+        # 1. DPR models: use pre-pooled output directly
+        if hasattr(passage_outputs, "pooler_output") and passage_outputs.pooler_output is not None:
+            return passage_outputs.pooler_output
+        
+        # 2. Standard transformers: apply custom pooling to last_hidden_state
+        if hasattr(passage_outputs, "last_hidden_state"):
+            return self._pooling(passage_outputs.last_hidden_state, psg['attention_mask'])
+        
+        # 3. Unsupported output structure
+        raise ValueError(f"Unsupported encoder output type: {type(passage_outputs)}. "
+                        f"Expected 'pooler_output' (DPR) or 'last_hidden_state' (standard transformers).")
         
 
     def _pooling(self, last_hidden_state, attention_mask):
